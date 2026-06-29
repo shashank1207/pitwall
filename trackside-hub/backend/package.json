@@ -1,0 +1,12 @@
+{
+  "name": "trackside-hub-backend",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "mqtt": "^5.0.0",
+    "ws": "^8.0.0"
+  }
+}
