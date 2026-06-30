@@ -2,15 +2,6 @@ import { useEffect, useRef } from "react";
 import * as echarts from "echarts";
 import { useTelemetryStream } from "../hooks/useTelemetryStream";
 
-const SERIES = {
-  THR_PREV: 0,
-  THR_CURR: 1,
-  SPD_PREV: 2,
-  SPD_CURR: 3,
-  BRK_PREV: 4,
-  BRK_CURR: 5,
-};
-
 const lineStyle = (color, width, isDashed) => ({
   color,
   width,
@@ -97,42 +88,17 @@ const buildStackOption = () => ({
     textStyle: { color: "#e8eaed", fontSize: 10, fontFamily: "JetBrains Mono, monospace" },
   },
   series: [
-    { ...emptySeries(), name: "PREV", xAxisIndex: 0, yAxisIndex: 0, lineStyle: lineStyle("#444455", 1, true) },
-    { ...emptySeries(), name: "CURR", xAxisIndex: 0, yAxisIndex: 0, lineStyle: lineStyle("#00e676", 1.5, false) },
-    { ...emptySeries(), name: "PREV", xAxisIndex: 1, yAxisIndex: 1, lineStyle: lineStyle("#444455", 1, true) },
-    { ...emptySeries(), name: "CURR", xAxisIndex: 1, yAxisIndex: 1, lineStyle: lineStyle("#00e5ff", 1.5, false) },
-    { ...emptySeries(), name: "PREV", xAxisIndex: 2, yAxisIndex: 2, lineStyle: lineStyle("#444455", 1, true) },
-    { ...emptySeries(), name: "CURR", xAxisIndex: 2, yAxisIndex: 2, lineStyle: lineStyle("#ff5252", 1.5, false) },
+    { ...emptySeries(), name: "Throttle", xAxisIndex: 0, yAxisIndex: 0, lineStyle: lineStyle("#00e676", 1.5, false) },
+    { ...emptySeries(), name: "Speed",    xAxisIndex: 1, yAxisIndex: 1, lineStyle: lineStyle("#00e5ff", 1.5, false) },
+    { ...emptySeries(), name: "Brake",    xAxisIndex: 2, yAxisIndex: 2, lineStyle: lineStyle("#ff5252", 1.5, false) },
   ],
 });
 
 const getSortedLapNumbers = (dictionary) =>
   Object.keys(dictionary).map(Number).sort((a, b) => b - a);
 
-const buildPrevSeriesData = (dictionary, lapNumber, field, multiplier) => {
-  const frames = dictionary[lapNumber];
-  if (!frames || frames.length === 0) return [];
-  return frames.map((pt) => {
-    const val = typeof pt[field] === "number" ? pt[field] : 0;
-    return [pt.track_position, val * multiplier];
-  });
-};
-
-const applyStaticSeries = (chart, dictionary, currentLap) => {
-  const previousLap = currentLap - 1;
-  const thrPrev = buildPrevSeriesData(dictionary, previousLap, "throttle", 100);
-  const spdPrev = buildPrevSeriesData(dictionary, previousLap, "speed", 1);
-  const brkPrev = buildPrevSeriesData(dictionary, previousLap, "brake", 100);
-
-  chart.setOption({
-    series: [
-      { data: thrPrev }, {}, { data: spdPrev }, {}, { data: brkPrev }, {},
-    ],
-  });
-};
-
 const positionCaptions = () => {
-  const el = document.getElementById("telemetryPanel");
+  const el = document.getElementById("telemChartContainer");
   if (!el) return;
   const h = el.clientHeight;
   const lbls = ["lblThrottle", "lblSpeed", "lblBrake"];
@@ -155,8 +121,8 @@ export function TelemetryStack() {
     chartRef.current.setOption(buildStackOption());
 
     let animationId;
-    let lastLapForStatic = -1;
     let lastRenderedTs = 0;
+    let lastLap = 0;
 
     const refreshChart = () => {
       const dictionary = sessionLapsRef.current;
@@ -168,10 +134,18 @@ export function TelemetryStack() {
 
       const currentLap = lapNumbers[0];
 
-      if (currentLap !== lastLapForStatic) {
-        lastLapForStatic = currentLap;
-        applyStaticSeries(chartRef.current, dictionary, currentLap);
-        positionCaptions();
+      if (currentLap !== lastLap) {
+        lastLap = currentLap;
+        lastRenderedTs = 0;
+        if (chartRef.current) {
+          chartRef.current.setOption({
+            series: [
+              { data: [] },
+              { data: [] },
+              { data: [] },
+            ],
+          });
+        }
       }
 
       const currFrames = dictionary[currentLap];
@@ -194,11 +168,8 @@ export function TelemetryStack() {
         const brkData = pts.map((pt) => [pt.track_position, pt.brake * 100]);
         chartRef.current.setOption({
           series: [
-            {},
             { data: thrData },
-            {},
             { data: spdData },
-            {},
             { data: brkData },
           ],
         });

@@ -5,17 +5,23 @@ import { LiveGauge } from "./components/LiveGauge";
 import { LapTimes } from "./components/LapTimes";
 import { TireDashboard } from "./components/TireDashboard";
 import { TelemetryStack } from "./components/TelemetryStack";
+import { NotificationPopup } from "./components/NotificationPopup";
 
 function App() {
-  const { isConnectedRef } = useTelemetryStream();
+  const { isConnectedRef, liveFrameRef } = useTelemetryStream();
   const [connected, setConnected] = useState(false);
+  const [lapNumber, setLapNumber] = useState(0);
 
   useEffect(() => {
     const interval = setInterval(() => {
       setConnected(isConnectedRef.current);
+      const frame = liveFrameRef.current;
+      if (frame && frame.lap && frame.lap !== lapNumber) {
+        setLapNumber(frame.lap);
+      }
     }, 500);
     return () => clearInterval(interval);
-  }, [isConnectedRef]);
+  }, [isConnectedRef, liveFrameRef, lapNumber]);
 
   return (
     <div className="dashboard">
@@ -35,11 +41,17 @@ function App() {
         <div className="dashboard-brand">
           <h1>Pit Wall — Telemetry</h1>
         </div>
-        <div className="connection-status">
-          <div
-            className={`connection-dot ${connected ? "online" : "offline"}`}
-          />
-          {connected ? "LIVE" : "NO DATA"}
+        <div className="header-right">
+          <NotificationPopup />
+          <div className="lap-indicator">
+            LAP <span>{lapNumber || "\u2014"}</span>
+          </div>
+          <div className="connection-status">
+            <div
+              className={`connection-dot ${connected ? "online" : "offline"}`}
+            />
+            {connected ? "LIVE" : "NO DATA"}
+          </div>
         </div>
       </header>
       <main className="dashboard-main">
@@ -54,7 +66,7 @@ function App() {
         </section>
         <section className="telem-panel" id="telemetryPanel">
           <p className="panel-label">Telemetry Stack — Throttle / Speed / Brake vs Track Position</p>
-          <div style={{ position: "relative", flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+          <div id="telemChartContainer" style={{ position: "relative", flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
             <TelemetryStack />
             <div className="chan-caption" id="lblThrottle" style={{ color: "var(--throttle)" }}>
               Throttle

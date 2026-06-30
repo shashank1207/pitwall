@@ -1,35 +1,32 @@
 import { useEffect, useRef } from "react";
-import toast from "react-hot-toast";
 
 const liveFrameRef = { current: null };
 const sessionLapsRef = { current: {} };
+const sessionEventsRef = { current: [] };
 const currentLapRef = { current: 0 };
 const previousLapCompletedTimeRef = { current: null };
+const previousLapTimeMsRef = { current: 0 };
 let wasLastFrameInvalid = false;
 let connectionAlreadyStarted = false;
 
-const fireLapInvalidatedAlert = () => {
-  toast.error("Track limits. Lap invalidated.", { id: "invalid-lap" });
-
-  try {
-    const utterance = new SpeechSynthesisUtterance("Lap invalidated.");
-    utterance.rate = 1.0;
-    window.speechSynthesis.speak(utterance);
-  } catch (_) {
-    // audio not available on this system
-  }
-};
-
 const handleLapInvalidationEdgeTrigger = (frame) => {
-  const isNewLap = frame.lap > currentLapRef.current;
-
-  if (isNewLap) {
-    wasLastFrameInvalid = false;
-  }
-
   const justBecameInvalid = !wasLastFrameInvalid && frame.lap_invalid;
   if (justBecameInvalid) {
-    fireLapInvalidatedAlert();
+    const alreadyRecorded = sessionEventsRef.current.some(
+      (evt) => evt.lap === currentLapRef.current && evt.type === "track_limits"
+    );
+    if (!alreadyRecorded) {
+      sessionEventsRef.current = [
+        ...sessionEventsRef.current,
+        {
+          type: "track_limits",
+          lap: currentLapRef.current,
+          lapTimeMs: frame.lap_time_ms,
+          trackPosition: frame.track_position,
+          ts: frame.ts,
+        },
+      ];
+    }
   }
 
   wasLastFrameInvalid = frame.lap_invalid;
@@ -49,7 +46,7 @@ const toChartPoint = (frame) => ({
 });
 
 const addFrameToSessionDictionary = (frame) => {
-  const lapNumber = frame.lap;
+  const lapNumber = currentLapRef.current;
   const dictionary = sessionLapsRef.current;
   if (!dictionary[lapNumber]) {
     dictionary[lapNumber] = [];
@@ -87,35 +84,31 @@ const deleteOldLaps = (lapDictionary, currentLap) => {
   }
 };
 
-const handleLapChange = (newLap) => {
-  if (newLap === currentLapRef.current) return;
-
-  if (currentLapRef.current > 0) {
-    const previousLapFrames =
-      sessionLapsRef.current[currentLapRef.current];
-    if (previousLapFrames && previousLapFrames.length > 0) {
-      const finalFrame = previousLapFrames[previousLapFrames.length - 1];
-      previousLapCompletedTimeRef.current = finalFrame.lap_time_ms;
-    }
-  }
-
-  currentLapRef.current = newLap;
-  deleteOldLaps(sessionLapsRef.current, newLap);
-};
-
 const resetSessionState = () => {
   sessionLapsRef.current = {};
+  sessionEventsRef.current = [];
   currentLapRef.current = 0;
   liveFrameRef.current = null;
   wasLastFrameInvalid = false;
   previousLapCompletedTimeRef.current = null;
+  previousLapTimeMsRef.current = 0;
 };
 
 const processIncomingFrame = (frame) => {
+  const prevMs = previousLapTimeMsRef.current;
+  if (prevMs > 0 && frame.lap_time_ms < prevMs - 500) {
+    if (currentLapRef.current > 0) {
+      previousLapCompletedTimeRef.current = prevMs;
+    }
+    currentLapRef.current++;
+    wasLastFrameInvalid = false;
+    deleteOldLaps(sessionLapsRef.current, currentLapRef.current);
+  }
+
+  previousLapTimeMsRef.current = frame.lap_time_ms;
   handleLapInvalidationEdgeTrigger(frame);
   updateLiveFrame(frame);
   addFrameToSessionDictionary(frame);
-  handleLapChange(frame.lap);
 };
 
 export function useTelemetryStream() {
@@ -177,6 +170,7 @@ export function useTelemetryStream() {
   return {
     liveFrameRef,
     sessionLapsRef,
+    sessionEventsRef,
     isConnectedRef,
     previousLapCompletedTimeRef,
   };
